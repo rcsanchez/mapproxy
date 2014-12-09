@@ -378,6 +378,16 @@ mapproxy_yaml_spec = {
                 'http': http_opts,
                 'on_error': on_error,
             }),
+            'geojson': combined(source_commons, {
+                required('url'): str(),
+                'transparent': bool(),
+                'image': image_opts,
+                'grid': str(),
+                'request_format': str(),
+                'origin': str(), # TODO: remove with 1.5
+                'http': http_opts,
+                'on_error': on_error,
+            }),
             'mapnik': combined(source_commons, {
                 required('mapfile'): str(),
                 'transparent': bool(),

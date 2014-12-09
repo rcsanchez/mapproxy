@@ -874,6 +874,41 @@ def file_ext(mimetype):
     _mime_class, format, _options = split_mime_type(mimetype)
     return format
 
+
+class GeojsonSourceConfiguration(SourceConfiguration):
+    supports_meta_tiles = False
+    source_type = ('geojson',)
+    defaults = {'grid': 'GLOBAL_MERCATOR'}
+
+    def source(self, params=None):
+        from mapproxy.client.geojson import GeojsonClient, TileURLTemplate
+        from mapproxy.source.geojson import GeojsonSource
+
+        if not self.context.seed and self.conf.get('seed_only'):
+            from mapproxy.source import DummySource
+            return DummySource(coverage=self.coverage())
+
+        if params is None: params = {}
+
+        url = self.conf['url']
+
+        if self.conf.get('origin'):
+            warnings.warn('origin for tile sources is deprecated since 1.3.0 '
+            'and will be ignored. use grid with correct origin.', RuntimeWarning)
+
+        http_client, url = self.http_client(url)
+        grid = self.context.grids[self.conf['grid']].tile_grid()
+        coverage = self.coverage()
+        res_range = resolution_range(self.conf)
+
+        image_opts = self.image_opts()
+        error_handler = self.on_error_handler()
+
+        format = file_ext(params['format'])
+        client = GeojsonClient(TileURLTemplate(url, format=format), http_client=http_client, grid=grid)
+        return GeojsonSource(grid, client, coverage=coverage, image_opts=image_opts,
+            error_handler=error_handler, res_range=res_range)
+
 class DebugSourceConfiguration(SourceConfiguration):
     source_type = ('debug',)
     required_keys = set('type'.split())
@@ -886,6 +921,7 @@ class DebugSourceConfiguration(SourceConfiguration):
 source_configuration_types = {
     'wms': WMSSourceConfiguration,
     'tile': TileSourceConfiguration,
+    'geojson': GeojsonSourceConfiguration,
     'debug': DebugSourceConfiguration,
     'mapserver': MapServerSourceConfiguration,
     'mapnik': MapnikSourceConfiguration,
