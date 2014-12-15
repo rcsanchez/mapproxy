@@ -31,6 +31,15 @@ import logging
 from functools import reduce
 log = logging.getLogger(__name__)
 
+from mapproxy.image import ImageSource
+import os
+try:
+  import numpy as np
+  from PIL import Image
+  import cv2
+except ImportError:
+  pass
+
 class BlankImage(Exception):
     pass
 
@@ -472,12 +481,30 @@ class CacheMapLayer(MapLayer):
         tiled_image = TiledImage(tile_sources, src_bbox=src_bbox, src_srs=self.grid.srs,
                           tile_grid=tile_grid, tile_size=self.grid.tile_size)
         try:
-            return tiled_image.transform(query.bbox, query.srs, query.size,
-                self.tile_manager.image_opts)
+            tiled_image = tiled_image.transform(query.bbox, query.srs, query.size,self.tile_manager.image_opts)
+          
+            image = tiled_image.as_image()
+            image = np.asarray(image)
+            #image = cv2.cvtColor(image, cv2.cv.CV_BGR2GRAY)
+            file = os.path.dirname(os.path.abspath(__file__)) + os.sep + "haarcascade_upperbody.xml"
+            cascade = cv2.CascadeClassifier(file)
+            facerect = cascade.detectMultiScale(image, scaleFactor=1.2, minNeighbors=1, minSize=(30, 30))
+            print "Oppai detect:"
+            print facerect
+            color = (0, 0, 0)
+            if len(facerect) > 0:
+              for rect in facerect:
+                 cv2.rectangle(image, tuple(rect[0:2]),tuple(rect[0:2]+rect[2:4]), color, thickness=2)
+
+            #Image.fromarray(np.uint8(image)).save("/Users/mizutanitakayuki/.qgis2/python/plugins/mapproxy_plugin/bin/aiu.png")
+            
+            return ImageSource(Image.fromarray(np.uint8(image)))
+            #return tiled_image.transform(query.bbox, query.srs, query.size,self.tile_manager.image_opts)
         except ProjError:
             raise MapBBOXError("could not transform query BBOX")
         except IOError as ex:
             from mapproxy.source import SourceError
             raise SourceError("unable to transform image: %s" % ex)
-
+        except NameError:
+            return tiled_image
 

@@ -19,11 +19,19 @@ from mapproxy.layer import BlankImage
 from mapproxy.compat import BytesIO
 
 import urllib2
-import mapnik 
-import numpy as np
-from numpy import pi,arctan,sqrt,arctan2,sin,cos
 from PIL import Image
-import scipy.ndimage
+try:
+  import mapnik
+  import tempfile
+  import os
+except ImportError:
+  pass
+try:
+  import numpy as np
+  from numpy import pi,arctan,sqrt,arctan2,sin,cos
+  import scipy.ndimage
+except ImportError:
+  pass
 
 class GeojsonClient(object):
     def __init__(self, url_template, http_client=None, grid=None):
@@ -56,85 +64,65 @@ class GeojsonClient(object):
         try:
           response = urllib2.urlopen(url)
           data = response.read()
+          data = data.replace("e","0")
+          dem = np.array([row.split(',') for row in data.splitlines()],dtype=np.float32)
+        
+          TSIZE = 20037508.342789244
+        
+          size = TSIZE / 2 ** (z - 1)
+          res = size/256.
+          ulx = -TSIZE + size*x
+          uly = TSIZE - size*y
+          zscale=5
+          azimuth=225
+          angle_altitude=45
+        
+          x, y = np.gradient(dem*zscale,res,-res)  
+          slope = pi/2. - arctan(sqrt(x*x + y*y))  
+          aspect = arctan2(-x, y)  
+          azimuthrad = azimuth*pi / 180.  
+          altituderad = angle_altitude*pi / 180.
+          shaded = sin(altituderad) * sin(slope) + cos(altituderad) * cos(slope) * cos(azimuthrad - aspect)  
+          shaded = 255*(shaded + 1)/2
+          sx = xd * 256/2**(tz-z)
+          ex = (xd+1)* 256/2**(tz-z)
+          sy = yd * 256/2**(tz-z)
+          ey = (yd+1)* 256/2**(tz-z)
+          shaded = shaded[sy:ey,sx:ex]
+          shaded = scipy.ndimage.zoom(shaded, 2**(tz-z), order=0)
+          img = Image.fromarray(np.uint8(shaded))
+          return ImageSource(img)
         except: 
           raise BlankImage()
-      
-        data = data.replace("e","0")
-        dem = np.array([row.split(',') for row in data.splitlines()],dtype=np.float32)
-        
-        TSIZE = 20037508.342789244
-        
-        size = TSIZE / 2 ** (z - 1)
-        res = size/256.
-        ulx = -TSIZE + size*x
-        uly = TSIZE - size*y
-        zscale=5
-        azimuth=225
-        angle_altitude=45
-        
-        x, y = np.gradient(dem*zscale,res,-res)  
-        slope = pi/2. - arctan(sqrt(x*x + y*y))  
-        aspect = arctan2(-x, y)  
-        azimuthrad = azimuth*pi / 180.  
-        altituderad = angle_altitude*pi / 180.
-        shaded = sin(altituderad) * sin(slope) + cos(altituderad) * cos(slope) * cos(azimuthrad - aspect)  
-        shaded = 255*(shaded + 1)/2
-        sx = xd * 256/2**(tz-z)
-        ex = (xd+1)* 256/2**(tz-z)
-        sy = yd * 256/2**(tz-z)
-        ey = (yd+1)* 256/2**(tz-z)
-        shaded = shaded[sy:ey,sx:ex]
-        shaded = scipy.ndimage.zoom(shaded, 2**(tz-z), order=0)
-        #### open cv ###
-        import cv2
-        image = np.uint8(shaded)
-        #image = cv2.equalizeHist(image)
-        file = "C:/Users/mizutani/.qgis2/python/plugins/mapproxy_plugin/project/haarcascade_upperbody.xml"
-        cascade = cv2.CascadeClassifier(file)
-        facerect = cascade.detectMultiScale(image, scaleFactor=1.1, minNeighbors=1, minSize=(1, 1))
-        print facerect
-        color = (0, 0, 0)
-        if len(facerect) > 0:
-          for rect in facerect:
-             cv2.rectangle(image, tuple(rect[0:2]),tuple(rect[0:2]+rect[2:4]), color, thickness=2)
-        img = Image.fromarray(np.uint8(image))
-        return ImageSource(img)
-
     def mapnik_image(self,url,tile_coord):
-      print url
-      x = str(tile_coord[0])
-      y = str(tile_coord[1])
-      z = str(tile_coord[2])
+        print url
+        x = str(tile_coord[0])
+        y = str(tile_coord[1])
+        z = str(tile_coord[2])
 
-      try:
-        response = urllib2.urlopen(url)
-        html = response.read()
-      except:
-        raise BlankImage()
-      else:
-        output = open("C://data/" + z + x + y + ".geojson",'w')
-        output.write(html)
-        output.close()
-        m = mapnik.Map(256,256)
-        m.srs = "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs"
-        m.background = mapnik.Color('white')
-        s = mapnik.Style()
-        r = mapnik.Rule()
-        line_symbolizer = mapnik.LineSymbolizer(mapnik.Color('rgb(0%,0%,0%)'),0.5)
-        r.symbols.append(line_symbolizer)
-        s.rules.append(r)
-        m.append_style('My Style',s)
-        ds = mapnik.GeoJSON(file="C://data/" + z + x + y + ".geojson")
-        layer = mapnik.Layer('world',"+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
-        layer.datasource = ds
-        layer.styles.append('My Style')
-        m.layers.append(layer)
-        m.zoom_all()
-        img = mapnik.Image(256, 256)
-        mapnik.render(m,img)
-        
-        data = img.tostring("png")
-        return ImageSource(BytesIO(data))
+        try:
+          response = urllib2.urlopen(url)
+          html = response.read()
+          f_geojson = tempfile.NamedTemporaryFile(delete=False)
+          f_geojson.write(html)
+          f_geojson.close()
+          ds = mapnik.GeoJSON(file=f_geojson.name)
+          os.unlink(f_geojson.name)
+          stylesheet = os.path.dirname(os.path.abspath(__file__)) + os.sep + 'rdcl.xml'
+          m = mapnik.Map(256,256)
+          mapnik.load_map(m, stylesheet)
+          layer = mapnik.Layer('world',"+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+          layer.datasource = ds
+          layer.styles.append('rdcl')
+          m.layers.append(layer)
+          m.zoom_all()
+          img = mapnik.Image(256, 256)
+          mapnik.render(m,img)
+          data = img.tostring("png")
+          return ImageSource(BytesIO(data))
+        except:
+          print "error"
+          raise BlankImage()
 
 class TileURLTemplate(object):
     """
