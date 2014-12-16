@@ -34,11 +34,12 @@ except ImportError:
   pass
 
 class GeojsonClient(object):
-    def __init__(self, url_template, http_client=None, grid=None):
+    def __init__(self, url_template, http_client=None, grid=None, style=None):
         self.url_template = url_template
         self.http_client = http_client
         self.grid = grid
-    
+        self.style = style
+
     def get_tile(self, tile_coord, format=None):
        
         url = self.url_template.substitute(tile_coord, format, self.grid)
@@ -108,12 +109,15 @@ class GeojsonClient(object):
           f_geojson.close()
           ds = mapnik.GeoJSON(file=f_geojson.name)
           os.unlink(f_geojson.name)
-          stylesheet = os.path.dirname(os.path.abspath(__file__)) + os.sep + 'rdcl.xml'
+          stylesheet = self.style
           m = mapnik.Map(256,256)
           mapnik.load_map(m, stylesheet)
+          s =  m.find_style('mapproxy')
+          m.remove_all() #remove layer
+          m.append_style('mapproxy',s)
           layer = mapnik.Layer('world',"+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
           layer.datasource = ds
-          layer.styles.append('rdcl')
+          layer.styles.append('mapproxy')
           m.layers.append(layer)
           m.zoom_all()
           img = mapnik.Image(256, 256)
@@ -121,7 +125,7 @@ class GeojsonClient(object):
           data = img.tostring("png")
           return ImageSource(BytesIO(data))
         except:
-          print "error"
+          print "no mapnik"
           raise BlankImage()
 
 class TileURLTemplate(object):

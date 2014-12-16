@@ -25,6 +25,7 @@ from mapproxy.compat import iteritems
 
 from threading import Lock
 
+from mydecoratemodule import *
 import logging
 log = logging.getLogger(__name__)
 
@@ -131,9 +132,13 @@ class MultiMapProxy(object):
         timestamps of all configuration files.
         """
         mapproxy_conf = self.loader.app_conf(proj_name)['mapproxy_conf']
+        
         log.info('initializing project app %s with %s', proj_name, mapproxy_conf)
         app = make_mapproxy_wsgi_app(mapproxy_conf, debug=self.debug)
-        return app, app.config_files
+        print "###############"
+        print app.config_files
+        appp = RequestInfoFilter(app)
+        return appp, app.config_files
 
 
 class ConfLoader(object):

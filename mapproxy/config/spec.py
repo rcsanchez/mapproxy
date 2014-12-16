@@ -380,6 +380,7 @@ mapproxy_yaml_spec = {
             }),
             'geojson': combined(source_commons, {
                 required('url'): str(),
+                'style': str(),
                 'transparent': bool(),
                 'image': image_opts,
                 'grid': str(),

@@ -905,7 +905,12 @@ class GeojsonSourceConfiguration(SourceConfiguration):
         error_handler = self.on_error_handler()
 
         format = file_ext(params['format'])
-        client = GeojsonClient(TileURLTemplate(url, format=format), http_client=http_client, grid=grid)
+        style = None
+        if self.conf.get('style') is not None:
+           style = self.context.globals.abspath(self.conf.get('style'))
+        else:
+           style = self.context.globals.abspath('default.xml')
+        client = GeojsonClient(TileURLTemplate(url, format=format), http_client=http_client, grid=grid, style=style)
         return GeojsonSource(grid, client, coverage=coverage, image_opts=image_opts,
             error_handler=error_handler, res_range=res_range)
 
