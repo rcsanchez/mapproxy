@@ -105,8 +105,12 @@ class GeojsonClient(object):
           response = urllib2.urlopen(url)
           html = response.read()
           f_geojson = tempfile.NamedTemporaryFile(delete=False)
+          #f_geojson = open(os.getcwd() + "/../project/cache_data/" + x + y + z + '.json','w')
+          if '\\u' in  html:
+             html = html.decode('unicode_escape').encode('utf-8')
           f_geojson.write(html)
           f_geojson.close()
+          #print f_geojson.name
           ds = mapnik.GeoJSON(file=f_geojson.name)
           os.unlink(f_geojson.name)
           stylesheet = self.style
@@ -119,12 +123,14 @@ class GeojsonClient(object):
           layer.datasource = ds
           layer.styles.append('mapproxy')
           m.layers.append(layer)
+          #m.background = mapnik.Color('rgb(255,255,255,0)')
           m.zoom_all()
           img = mapnik.Image(256, 256)
           mapnik.render(m,img)
           data = img.tostring("png")
           return ImageSource(BytesIO(data))
-        except:
+        except Exception as e:
+          print e.message
           print "no mapnik"
           raise BlankImage()
 

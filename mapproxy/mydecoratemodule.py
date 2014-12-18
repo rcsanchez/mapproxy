@@ -15,7 +15,7 @@ def annotate_img(image, service, layers, environ, query_extent, **kw):
        if "oppai" in layers[0]:
           img = image.as_image()   #.convert('LA')
           img = np.asarray(img)
-          file = os.getcwd() + os.sep + ".."+ os.sep + "haarcascade_upperbody.xml"
+          file = os.getcwd() + os.sep + ".."+ os.sep + "cascade_oppai.xml"
           cascade = cv2.CascadeClassifier(file)
           facerect = cascade.detectMultiScale(img, scaleFactor=1.2, minNeighbors=1, minSize=(30, 30))
           print "Oppai detect:"

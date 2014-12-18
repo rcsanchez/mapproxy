@@ -135,8 +135,6 @@ class MultiMapProxy(object):
         
         log.info('initializing project app %s with %s', proj_name, mapproxy_conf)
         app = make_mapproxy_wsgi_app(mapproxy_conf, debug=self.debug)
-        print "###############"
-        print app.config_files
         appp = RequestInfoFilter(app)
         return appp, app.config_files
 
