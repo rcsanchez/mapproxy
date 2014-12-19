@@ -34,11 +34,12 @@ except ImportError:
   pass
 
 class GeojsonClient(object):
-    def __init__(self, url_template, http_client=None, grid=None, style=None):
+    def __init__(self, url_template, http_client=None, grid=None, style=None, extzoom=None):
         self.url_template = url_template
         self.http_client = http_client
         self.grid = grid
         self.style = style
+        self.extzoom = extzoom
 
     def get_tile(self, tile_coord, format=None):
        
@@ -46,12 +47,62 @@ class GeojsonClient(object):
         if self.http_client:
             if ".txt" in url:
                return self.dem2shade(url,tile_coord)
-            return self.mapnik_image(url,tile_coord)
+            elif ".png" in url:
+               return self.hq_tile(url,tile_coord)
+            else:
+               return self.mapnik_image(url,tile_coord)
         else:
             return retrieve_image(url)
     
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.url_template)
+
+    def hq_tile(self,url,tile_coord):
+        print url
+        tx = tile_coord[0]
+        ty = tile_coord[1]
+        tz = tile_coord[2]
+        if self.extzoom is not None:
+           zmin,zmax,extzmin,extzmax = tuple(self.extzoom)
+        else:
+           extzmin = zmax = 100
+           extzmax = zmin = -100
+        try:
+         if zmin > tz >= extzmin:
+           z = zmin
+           x0 = tx*2**(z-tz)
+           y0 = ty*2**(z-tz)
+           size = 256*2**(z-tz)
+           img=[]
+           hq_img = Image.new('RGB', (size,size))
+           for j in range(2**(z-tz)):
+              for i in range(2**(z-tz)):
+                 hq_url = url.replace("/" + str(tx) + "/", "/" + str(x0+i) + "/").replace("/" + str(ty) + ".png", "/" + str(y0+j) + ".png").replace("/" + str(tz) + "/", "/" + str(z) + "/")
+                 print "ext#" + hq_url
+                 response = urllib2.urlopen(hq_url)
+                 data = response.read()
+                 hq_img.paste(Image.open(BytesIO(data)),((x0+i)%x0*256,(y0+j)%y0*256))
+           return ImageSource(hq_img.resize((256,256),Image.ANTIALIAS))
+         elif zmax < tz <= extzmax:
+           z = zmax
+           x0,xd = divmod(tx,2**(tz-z))
+           y0,yd = divmod(ty,2**(tz-z))
+           url = url.replace("/" + str(tx) + "/", "/" + str(x0) + "/").replace("/" + str(ty) + ".png", "/" + str(y0) + ".png").replace("/" + str(tz) + "/", "/" + str(z) + "/")
+           response = urllib2.urlopen(url)
+           data = response.read()
+           img = Image.open(BytesIO(data))
+           sx = xd * 256/2**(tz-z)
+           ex = (xd+1)* 256/2**(tz-z)
+           sy = yd * 256/2**(tz-z)
+           ey = (yd+1)* 256/2**(tz-z)
+           return ImageSource(img.crop((sx,sy,ex,ey)).resize((256,256),Image.ANTIALIAS))
+         else:
+           response = urllib2.urlopen(url)
+           data = response.read()
+           return ImageSource(Image.open(BytesIO(data)))
+        except Exception as e:
+           print e 
+           raise BlankImage()
 
     def dem2shade(self,url,tile_coord):
         print url
