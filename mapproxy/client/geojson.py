@@ -68,7 +68,7 @@ class GeojsonClient(object):
            extzmin = zmax = 100
            extzmax = zmin = -100
         try:
-         if zmin > tz >= extzmin:
+         if zmin > tz >= extzmin and zmin - extzmin < 3:
            z = zmin
            x0 = tx*2**(z-tz)
            y0 = ty*2**(z-tz)
