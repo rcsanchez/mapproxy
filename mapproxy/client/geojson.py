@@ -45,12 +45,7 @@ class GeojsonClient(object):
        
         url = self.url_template.substitute(tile_coord, format, self.grid)
         if self.http_client:
-            if ".txt" in url:
-               return self.dem2shade(url,tile_coord)
-            elif ".png" in url:
-               return self.hq_tile(url,tile_coord)
-            else:
-               return self.mapnik_image(url,tile_coord)
+            return self.hq_tile(url,tile_coord)
         else:
             return retrieve_image(url)
     
@@ -62,6 +57,17 @@ class GeojsonClient(object):
         tx = tile_coord[0]
         ty = tile_coord[1]
         tz = tile_coord[2]
+        z=tz
+        if ".txt" in url:
+           ext = ".txt"
+        elif ".png" in url:
+           ext = ".png"
+        elif ".geojson" in url:
+           ext = ".geojson"
+        elif ".json" in url:
+           ext = ".json"
+        else:
+           raise BlankImage()    
         if self.extzoom is not None:
            zmin,zmax,extzmin,extzmax = tuple(self.extzoom)
         else:
@@ -73,24 +79,35 @@ class GeojsonClient(object):
            x0 = tx*2**(z-tz)
            y0 = ty*2**(z-tz)
            size = 256*2**(z-tz)
-           img=[]
            hq_img = Image.new('RGB', (size,size))
            for j in range(2**(z-tz)):
               for i in range(2**(z-tz)):
-                 hq_url = url.replace("/" + str(tx) + "/", "/" + str(x0+i) + "/").replace("/" + str(ty) + ".png", "/" + str(y0+j) + ".png").replace("/" + str(tz) + "/", "/" + str(z) + "/")
+                 hq_url = url.replace("/" + str(tx) + "/", "/" + str(x0+i) + "/").replace("/" + str(ty) + ext, "/" + str(y0+j) + ext).replace("/" + str(tz) + "/", "/" + str(z) + "/")
                  print "ext#" + hq_url
                  response = urllib2.urlopen(hq_url)
                  data = response.read()
-                 hq_img.paste(Image.open(BytesIO(data)),((x0+i)%x0*256,(y0+j)%y0*256))
+                 if ext in ".png":
+                    img = self.png2png(data)
+                 elif ext in ".txt":
+                    img = self.txt2png(data,z)
+                 else:
+                    img = self.json2png(data)
+                 hq_img.paste(img,((x0+i)%x0*256,(y0+j)%y0*256))
            return ImageSource(hq_img.resize((256,256),Image.ANTIALIAS))
          elif zmax < tz <= extzmax:
            z = zmax
            x0,xd = divmod(tx,2**(tz-z))
            y0,yd = divmod(ty,2**(tz-z))
-           url = url.replace("/" + str(tx) + "/", "/" + str(x0) + "/").replace("/" + str(ty) + ".png", "/" + str(y0) + ".png").replace("/" + str(tz) + "/", "/" + str(z) + "/")
+           url = url.replace("/" + str(tx) + "/", "/" + str(x0) + "/").replace("/" + str(ty) + ext, "/" + str(y0) + ext).replace("/" + str(tz) + "/", "/" + str(z) + "/")
+           print "ext#" + url
            response = urllib2.urlopen(url)
            data = response.read()
-           img = Image.open(BytesIO(data))
+           if ext in ".png":
+              img = self.png2png(data)
+           elif ext in ".txt":
+              img = self.txt2png(data,z)
+           else:
+              img = self.json2png(data)
            sx = xd * 256/2**(tz-z)
            ex = (xd+1)* 256/2**(tz-z)
            sy = yd * 256/2**(tz-z)
@@ -99,23 +116,22 @@ class GeojsonClient(object):
          else:
            response = urllib2.urlopen(url)
            data = response.read()
-           return ImageSource(Image.open(BytesIO(data)))
+           if ext in ".png":
+              img = self.png2png(data)
+           elif ext in ".txt":
+              img = self.txt2png(data,z)
+           else:
+              img = self.json2png(data)
+           return ImageSource(img)
         except Exception as e:
            print e 
            raise BlankImage()
 
-    def dem2shade(self,url,tile_coord):
-        print url
-        tx = tile_coord[0]
-        ty = tile_coord[1]
-        tz = tile_coord[2]
-        z = max(0,min(tz,14))
-        x, xd = divmod(tx,2**(tz-z))
-        y, yd = divmod(ty,2**(tz-z))
-        url = url.replace("/" + str(tx) + "/", "/" + str(x) + "/").replace("/" + str(ty) + ".txt", "/" + str(y) + ".txt").replace("/" + str(tz) + "/", "/" + str(z) + "/")
+    def png2png(self,data):
+        return Image.open(BytesIO(data))
+        
+    def txt2png(self,data,z):
         try:
-          response = urllib2.urlopen(url)
-          data = response.read()
           data = data.replace("e","0")
           dem = np.array([row.split(',') for row in data.splitlines()],dtype=np.float32)
         
@@ -123,8 +139,6 @@ class GeojsonClient(object):
         
           size = TSIZE / 2 ** (z - 1)
           res = size/256.
-          ulx = -TSIZE + size*x
-          uly = TSIZE - size*y
           zscale=5
           azimuth=225
           angle_altitude=45
@@ -136,30 +150,18 @@ class GeojsonClient(object):
           altituderad = angle_altitude*pi / 180.
           shaded = sin(altituderad) * sin(slope) + cos(altituderad) * cos(slope) * cos(azimuthrad - aspect)  
           shaded = 255*(shaded + 1)/2
-          sx = xd * 256/2**(tz-z)
-          ex = (xd+1)* 256/2**(tz-z)
-          sy = yd * 256/2**(tz-z)
-          ey = (yd+1)* 256/2**(tz-z)
-          shaded = shaded[sy:ey,sx:ex]
-          shaded = scipy.ndimage.zoom(shaded, 2**(tz-z), order=0)
-          img = Image.fromarray(np.uint8(shaded))
-          return ImageSource(img)
-        except: 
+          return Image.fromarray(np.uint8(shaded))
+        except Exception as e:
+          print e.message
+          print "no numpy,no scipy"
           raise BlankImage()
-    def mapnik_image(self,url,tile_coord):
-        print url
-        x = str(tile_coord[0])
-        y = str(tile_coord[1])
-        z = str(tile_coord[2])
-
+    def json2png(self,data):
         try:
-          response = urllib2.urlopen(url)
-          html = response.read()
           f_geojson = tempfile.NamedTemporaryFile(delete=False)
           #f_geojson = open(os.getcwd() + "/../project/cache_data/" + x + y + z + '.json','w')
-          if '\\u' in  html:
-             html = html.decode('unicode_escape').encode('utf-8')
-          f_geojson.write(html)
+          if '\\u' in  data:
+             data = data.decode('unicode_escape').encode('utf-8')
+          f_geojson.write(data)
           f_geojson.close()
           #print f_geojson.name
           ds = mapnik.GeoJSON(file=f_geojson.name)
@@ -178,8 +180,7 @@ class GeojsonClient(object):
           m.zoom_all()
           img = mapnik.Image(256, 256)
           mapnik.render(m,img)
-          data = img.tostring("png")
-          return ImageSource(BytesIO(data))
+          return BytesIO(img.tostring("png"))
         except Exception as e:
           print e.message
           print "no mapnik"
